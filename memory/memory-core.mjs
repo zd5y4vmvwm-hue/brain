@@ -45,7 +45,7 @@ export function validateRecords(records) {
   });
 }
 
-async function derive(passphrase, salt) {
+export async function deriveMemoryKey(passphrase, salt) {
   if (typeof passphrase !== 'string' || !passphrase.length) throw new Error('Enter a passphrase.');
   const input = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({name: 'PBKDF2', hash: 'SHA-256', salt, iterations: ITERATIONS}, input,
@@ -55,7 +55,7 @@ async function derive(passphrase, salt) {
 export async function newKey(passphrase) {
   if (passphrase.length < 12) throw new Error('Use a passphrase of at least 12 characters.');
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  return {key: await derive(passphrase, salt), salt: base64(salt)};
+  return {key: await deriveMemoryKey(passphrase, salt), salt: base64(salt)};
 }
 
 export async function seal(records, {key, salt}) {
@@ -95,7 +95,7 @@ async function decode(key, {iv, data}) {
 
 export async function openBackup(envelope, passphrase) {
   const params = parameters(envelope);
-  const key = await derive(passphrase, params.salt);
+  const key = await deriveMemoryKey(passphrase, params.salt);
   return {session: {key, salt: envelope.salt}, records: await decode(key, params)};
 }
 

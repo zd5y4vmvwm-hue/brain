@@ -1,7 +1,7 @@
-const CACHE = 'grok-brain-memory-shell-v1-20261123b';
+const CACHE = 'grok-brain-memory-shell-v1-20261123c';
 const BASE = self.registration.scope;
 const SHELL = new URL('./', BASE).href;
-const ASSETS = ['./','./index.html','./style.css','./app.mjs','./import-link.js','./memory-core.mjs','./memory-store.mjs','./graph-picker.mjs','./compat.mjs','../brain-vault.js'].map(path => new URL(path, BASE).href);
+const ASSETS = ['./','./index.html','./style.css','./app.mjs','./import-link.js','./compact-import.mjs','./memory-core.mjs','./memory-store.mjs','./graph-picker.mjs','./compat.mjs','../brain-vault.js'].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

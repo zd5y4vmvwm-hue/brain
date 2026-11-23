@@ -117,7 +117,7 @@ async function lockedScreen() {
   const existing = (await readVault()) || readLegacyRaw();
   if (generationAtStart !== generation || session) return;
   showLink(existing);
-  $('gate').hidden = !existing && Boolean(linkedImport?.envelope); $('desk').hidden = true; $('backup').hidden = Boolean(existing);
+  $('gate').hidden = !existing && Boolean(linkedImport && !linkedImport.error); $('desk').hidden = true; $('backup').hidden = Boolean(existing);
   $('download').hidden = true; $('lock').hidden = true; $('legacyTools').hidden = true;
   $('unlockBtn').textContent = existing ? 'Unlock memory' : 'Create memory';
   $('pw').autocomplete = existing ? 'current-password' : 'new-password';
@@ -241,6 +241,10 @@ async function restoreEnvelope(envelope, passphrase, token) {
     const records = await openLegacyBackup(JSON.stringify(envelope), passphrase);
     opened = {records, session: await newKey(passphrase)};
   } else { opened = await openBackup(envelope, passphrase); }
+  return applyRestore(opened, token);
+}
+
+async function applyRestore(opened, token) {
   if (token !== generation) return;
   if (!session) {
     if (readLegacyRaw()) throw new Error('Unlock existing device memory, then merge this backup.');
@@ -273,11 +277,21 @@ $('linkForm').addEventListener('submit', event => {
   event.preventDefault();
   action(async () => {
     const item = linkedImport, token = generation;
-    if (!item?.envelope) throw new Error('Reopen the encrypted import link.');
+    if (!item || item.error) throw new Error('Reopen the encrypted import link.');
     if (!session && ((await readVault()) || readLegacyRaw())) throw new Error('Unlock existing memory first.');
     if (token !== generation || item !== linkedImport) return;
     const passphrase = $('linkPw').value;
-    if (await restoreEnvelope(item.envelope, passphrase, token) && item === linkedImport) clearLink();
+    let restored;
+    if (item.compact) {
+      const {openCompactImport} = await import('./compact-import.mjs');
+      const records = await openCompactImport(item.compact, passphrase);
+      if (token !== generation) return;
+      const target = session || await newKey(passphrase);
+      restored = await applyRestore({records, session:target}, token);
+    } else {
+      restored = await restoreEnvelope(item.envelope, passphrase, token);
+    }
+    if (restored && item === linkedImport) clearLink();
   });
 });
 $('linkDismiss').addEventListener('click', () => {

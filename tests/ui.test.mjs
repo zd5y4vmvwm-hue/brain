@@ -7,7 +7,7 @@ import {transactionDatabase} from './transaction-double.mjs';
 const root = new URL('../memory/',import.meta.url);
 const html = await fs.readFile(new URL('index.html',root),'utf8');
 const importLinkScript=await fs.readFile(new URL('import-link.js',root),'utf8');
-const moduleText=new Map(await Promise.all(['app.mjs','memory-core.mjs','memory-store.mjs','compat.mjs','../brain-vault.js','graph-picker.mjs'].map(async name=>[name,await fs.readFile(new URL(name,root),'utf8')])));
+const moduleText=new Map(await Promise.all(['app.mjs','memory-core.mjs','memory-store.mjs','compat.mjs','../brain-vault.js','graph-picker.mjs','compact-import.mjs'].map(async name=>[name,await fs.readFile(new URL(name,root),'utf8')])));
 const password='Maple-Purple-Window-9071';
 const title='Paper compass field note';
 const source='Notebook Indigo, sheet 726';
@@ -51,7 +51,7 @@ async function tab(shared,embedded=false,fragment=''){
   const scrubbed=[];
   const history={state:null,replaceState(state,_title,address){this.state=state;location.href=new URL(address,location).href;scrubbed.push(location.href);}};
   const realm={document,location,history,navigator:{},addEventListener:(...args)=>listeners.addEventListener(...args),
-    dispatchEvent:event=>listeners.fire(event.type,event),Event,CustomEvent,Blob,URL:LocalURL,
+    dispatchEvent:event=>listeners.fire(event.type,event),Event,CustomEvent,Blob,Response,CompressionStream,DecompressionStream,ReadableStream,TransformStream,URL:LocalURL,
     MutationObserver:class {constructor(fn){this.fn=fn;}observe(element){element.watch=this.fn;}disconnect(){}},
     localStorage:{getItem:key=>shared.local.get(key)??null,setItem:(key,value)=>shared.local.set(key,value)},
     indexedDB:shared.db, crypto:globalThis.crypto,TextEncoder,TextDecoder,atob,btoa,BroadcastChannel:Channel,
@@ -268,4 +268,26 @@ test('private import parser rejects extra plaintext metadata, URL-looking payloa
     submitLink(a,'Fictional-wrong-password');await delay(15);
     assert.equal(state.db.snapshot(),'[]');assert.equal(state.local.size,0);assert.deepEqual(state.requests,[]);
   }
+});
+
+test('compact linked records restore and merge through the same private import form without changing existing memory',async()=>{
+  const {makeCompactImport}=await import('../memory/compact-import.mjs');
+  const {entry,secret}=await importFixture(),fragment=await makeCompactImport([entry],secret);
+  assert.match(fragment,/^#import=z1\./);
+  const first=origin(),fresh=await tab(first,false,fragment);
+  assert.equal(fresh.initialHash,'');await fresh.until(()=>!fresh.$('linkForm').hidden);
+  submitLink(fresh,'Fictional-Wrong-Compact-Passphrase');await fresh.until(()=>fresh.$('status').classes.has('error'));
+  assert.equal(first.db.snapshot(),'[]');submitLink(fresh,secret);await fresh.until(()=>fresh.$('list').textContent===entry.versions[0].title);
+  fresh.select(entry.versions[0].title);assert.equal(fresh.$('recordSource').textContent,entry.versions[0].source);
+  assert.ok(!first.db.snapshot().includes(entry.versions[0].body));
+  const store=origin(),existing=await tab(store);await existing.unlock();existing.click('new');
+  await existing.save({title:'Independent compact link fixture',body:'Keep this earlier fixture'});const before=store.db.snapshot();
+  existing.click('lock');await existing.until(()=>!existing.$('gate').hidden);
+  existing.newHash(fragment);await existing.until(()=>!existing.$('linkPanel').hidden);
+  assert.ok(existing.$('linkForm').hidden);assert.equal(store.db.snapshot(),before);
+  await existing.unlock();submitLink(existing,secret);await existing.until(()=>existing.$('count').textContent==='2 records');
+  existing.newHash(fragment);await existing.until(()=>!existing.$('linkPanel').hidden);submitLink(existing,secret);await existing.until(()=>existing.$('linkPanel').hidden);
+  assert.equal(existing.$('count').textContent,'2 records');
+  existing.select('Independent compact link fixture');assert.equal(existing.$('recordBody').textContent,'Keep this earlier fixture');
+  assert.deepEqual([...first.requests,...store.requests],[]);
 });
