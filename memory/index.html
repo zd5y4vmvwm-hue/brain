@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050706"><meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self'; worker-src 'self'; frame-src 'self'">
+<title>Memory · Brain</title><link rel="stylesheet" href="style.css">
+</head><body><header><a id="return" href="../">← Brain</a><button type="button" id="lock" hidden>Lock</button></header>
+<main><h1>Memory<span>.</span></h1><p class="intro">Private captures, sources and corrections on this device.</p>
+<p id="status" role="status" aria-live="polite">Opening memory…</p>
+<section id="gate" hidden><form id="unlockForm"><label>Memory passphrase<input id="pw" type="password" required autocomplete="current-password"></label><p id="hint"></p><button class="primary" id="unlockBtn" type="submit">Unlock memory</button></form></section>
+<section id="desk" hidden>
+<div class="tools"><label>Search memory<input id="search" type="search" placeholder="Title, text or source" autocomplete="off"></label><button id="new" type="button">New memory</button></div>
+<button id="pickGraph" type="button">Capture from Brain graph</button><p id="count"></p><ul id="list"></ul>
+<section id="detail" hidden><h2 id="recordTitle"></h2><p id="recordBody" class="multiline"></p><h3>Source reference</h3><div id="recordSource" class="multiline"></div>
+<button id="edit" type="button">Edit</button><details><summary>Correction history</summary><ol id="history"></ol></details></section>
+<form id="editor" autocomplete="off" spellcheck="false" hidden><h2 id="editHeading">New memory</h2>
+<label>Title<input id="title" required maxlength="512" autocomplete="off"></label>
+<label>Memory text<textarea id="body" rows="6" maxlength="200000"></textarea></label>
+<label>Source reference<textarea id="source" rows="2" maxlength="60000" placeholder="Document, URL or conversation"></textarea></label>
+<div class="buttons"><button class="primary" type="submit">Save memory</button><button id="cancel" type="button">Cancel</button></div></form>
+</section>
+<section id="backup" hidden><h2>Backup &amp; restore</h2><button id="download" type="button" hidden>Download encrypted backup</button>
+<form id="restore"><label>Encrypted backup file<input id="file" type="file" accept=".json,application/json"></label>
+<label>Backup passphrase<input id="backupPw" type="password" autocomplete="off"></label>
+<button id="merge" type="submit">Merge backup</button></form>
+<details id="legacyTools" hidden><summary>Import earlier records</summary>
+<form id="legacyForm" hidden><label>Earlier device passphrase<input id="legacyPw" type="password" autocomplete="off"></label><button type="submit">Merge earlier device memory</button></form>
+<form id="seedForm"><label>Brain seed JSON file<input id="seedFile" type="file" accept=".json,application/json"></label><button type="submit">Import local seed</button></form>
+</details></section>
+<noscript>Enable JavaScript to open encrypted memory.</noscript></main><script type="module" src="app.mjs"></script></body></html>
