@@ -4,7 +4,21 @@ import {readVault, commitVault} from './memory-store.mjs';
 
 const $ = id => document.getElementById(id);
 let session = null, records = [], selected = null, editBase = null, pendingCapture = null;
-let closePicker = null;
+let closePicker = null, linkedImport = window.takeBrainImport?.() || null;
+function showLink(existing) {
+  const pending = Boolean(linkedImport), blocked = Boolean(existing && !session);
+  $('linkPanel').hidden = !pending;
+  $('linkForm').hidden = !pending || blocked || Boolean(linkedImport?.error);
+  if (!pending) return;
+  $('linkMessage').textContent = linkedImport.error || (blocked
+    ? 'Unlock the memory already on this device, then enter the import passphrase to merge these records.'
+    : session ? 'Enter the import passphrase to merge these records with your memory.'
+    : 'Enter the import passphrase to open these records on this device.');
+  $('linkOpen').textContent = session ? 'Merge linked memories' : 'Open linked memories';
+}
+function clearLink() {
+  linkedImport = null; $('linkPw').value = ''; $('linkPanel').hidden = true;
+}
 let busy = false, generation = 0, channel = null, refreshNumber = 0;
 const latest = record => record.versions[record.versions.length - 1];
 const byId = id => records.find(record => record.id === id);
@@ -102,7 +116,8 @@ async function lockedScreen() {
   const generationAtStart = generation;
   const existing = (await readVault()) || readLegacyRaw();
   if (generationAtStart !== generation || session) return;
-  $('gate').hidden = false; $('desk').hidden = true; $('backup').hidden = Boolean(existing);
+  showLink(existing);
+  $('gate').hidden = !existing && Boolean(linkedImport?.envelope); $('desk').hidden = true; $('backup').hidden = Boolean(existing);
   $('download').hidden = true; $('lock').hidden = true; $('legacyTools').hidden = true;
   $('unlockBtn').textContent = existing ? 'Unlock memory' : 'Create memory';
   $('pw').autocomplete = existing ? 'current-password' : 'new-password';
@@ -116,12 +131,12 @@ function unlock(next, loaded) {
   $('pw').value = ''; $('backupPw').value = ''; $('file').value = '';
   $('gate').hidden = true; $('desk').hidden = false; $('backup').hidden = false; $('lock').hidden = false;
   $('download').hidden = false; $('legacyTools').hidden = false; $('legacyForm').hidden = !readLegacyRaw(); $('merge').textContent = 'Merge backup';
-  draw(); status('Memory unlocked.');
+  showLink(true); draw(); status('Memory unlocked.');
   if (pendingCapture) { const capture = pendingCapture; pendingCapture = null; edit(null, capture); }
 }
 
 function lock(render = true) {
-  closePicker?.(); closePicker = null;
+  closePicker?.(); closePicker = null; clearLink();
   generation++; session = null; records = []; selected = null; pendingCapture = null;
   clearEditor(); $('unlockForm').reset(); $('restore').reset(); $('legacyForm').reset(); $('seedForm').reset(); $('search').value = '';
   for (const id of ['list','count','history','recordTitle','recordBody','recordSource']) $(id).replaceChildren();
@@ -220,6 +235,28 @@ $('download').addEventListener('click', () => action(async () => {
   setTimeout(() => URL.revokeObjectURL(url), 60000); status('Encrypted backup prepared.');
 }));
 
+async function restoreEnvelope(envelope, passphrase, token) {
+  let opened;
+  if (envelope.format === LEGACY_BACKUP_FORMAT) {
+    const records = await openLegacyBackup(JSON.stringify(envelope), passphrase);
+    opened = {records, session: await newKey(passphrase)};
+  } else { opened = await openBackup(envelope, passphrase); }
+  if (token !== generation) return;
+  if (!session) {
+    if (readLegacyRaw()) throw new Error('Unlock existing device memory, then merge this backup.');
+    const clean = await seal(opened.records, opened.session);
+    if (token !== generation) return;
+    if (!await commitVault(null, clean)) throw new Error('Unlock existing memory, then merge this backup.');
+    if (token !== generation) return;
+    unlock(opened.session, opened.records); status('Restored ' + opened.records.length + ' records.'); channel?.postMessage('changed');
+  } else {
+    const result = await mutate(current => mergeRecords(current, opened.records));
+    if (!session) return;
+    draw(); status('Merged · ' + result.added + ' added · ' + result.updated + ' updated · ' + result.conflicts + ' conflicting copies retained.');
+  }
+  return true;
+}
+
 $('restore').addEventListener('submit', event => {
   event.preventDefault();
   action(async () => {
@@ -228,26 +265,33 @@ $('restore').addEventListener('submit', event => {
     const passphrase = $('backupPw').value;
     let envelope;
     try { envelope = JSON.parse(await file.text()); } catch { throw new Error('The backup is not valid JSON.'); }
-    let opened;
-    if (envelope.format === LEGACY_BACKUP_FORMAT) {
-      const records = await openLegacyBackup(JSON.stringify(envelope), passphrase);
-      opened = {records, session: await newKey(passphrase)};
-    } else { opened = await openBackup(envelope, passphrase); }
-    if (token !== generation) return;
-    if (!session) {
-      if (readLegacyRaw()) throw new Error('Unlock existing device memory, then merge this backup.');
-      const clean = await seal(opened.records, opened.session);
-      if (token !== generation) return;
-      if (!await commitVault(null, clean)) throw new Error('Unlock existing memory, then merge this backup.');
-      if (token !== generation) return;
-      unlock(opened.session, opened.records); status('Restored ' + opened.records.length + ' records.'); channel?.postMessage('changed');
-    } else {
-      const result = await mutate(current => mergeRecords(current, opened.records));
-      if (!session) return;
-      draw(); status('Merged · ' + result.added + ' added · ' + result.updated + ' updated · ' + result.conflicts + ' conflicting copies retained.');
-    }
-    $('restore').reset();
+    if (token === generation && await restoreEnvelope(envelope, passphrase, token)) $('restore').reset();
   });
+});
+
+$('linkForm').addEventListener('submit', event => {
+  event.preventDefault();
+  action(async () => {
+    const item = linkedImport, token = generation;
+    if (!item?.envelope) throw new Error('Reopen the encrypted import link.');
+    if (!session && ((await readVault()) || readLegacyRaw())) throw new Error('Unlock existing memory first.');
+    if (token !== generation || item !== linkedImport) return;
+    const passphrase = $('linkPw').value;
+    if (await restoreEnvelope(item.envelope, passphrase, token) && item === linkedImport) clearLink();
+  });
+});
+$('linkDismiss').addEventListener('click', () => {
+  if (busy) return;
+  clearLink();
+  if (!session) lockedScreen().catch(e => status(e.message, true));
+});
+addEventListener('brain-import-received', () => {
+  const next = window.takeBrainImport?.();
+  if (!next) return;
+  if (busy) { status('An import is in progress. Reopen the new link after it finishes.'); return; }
+  $('linkPw').value = ''; linkedImport = next;
+  if (session) showLink(true);
+  else lockedScreen().catch(e => status(e.message, true));
 });
 
 $('legacyForm').addEventListener('submit', event => {

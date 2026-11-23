@@ -6,6 +6,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {transactionDatabase} from './transaction-double.mjs';
 const root = new URL('../memory/',import.meta.url);
 const html = await fs.readFile(new URL('index.html',root),'utf8');
+const importLinkScript=await fs.readFile(new URL('import-link.js',root),'utf8');
 const moduleText=new Map(await Promise.all(['app.mjs','memory-core.mjs','memory-store.mjs','compat.mjs','../brain-vault.js','graph-picker.mjs'].map(async name=>[name,await fs.readFile(new URL(name,root),'utf8')])));
 const password='Maple-Purple-Window-9071';
 const title='Paper compass field note';
@@ -32,21 +33,25 @@ class Element {
 }
 function dom(){
   const nodes=new Map(Array.from(html.matchAll(/<(\w+)\b([^>]*?)\bid="([^"]+)"([^>]*)>/g),match=>[match[3],new Element(match[1],match[3],/\bhidden\b/.test(match[2]+match[4]))]));
-  for(const [form,fields] of Object.entries({editor:['title','body','source'],unlockForm:['pw'],restore:['file','backupPw'],legacyForm:['legacyPw'],seedForm:['seedFile']})){
+  for(const [form,fields] of Object.entries({editor:['title','body','source'],unlockForm:['pw'],restore:['file','backupPw'],legacyForm:['legacyPw'],seedForm:['seedFile'],linkForm:['linkPw']})){
     nodes.get(form).fields=fields.map(id=>nodes.get(id));
   }
   const document={body:new Element('body'),getElementById:id=>{assert.ok(nodes.has(id),id);return nodes.get(id);},createTextNode:s=>{const t=new Element('text');t.textContent=s;return t;},createElement:tag=>new Element(tag)};
   return {document,$:document.getElementById};
 }
 function origin(){return {local:new Map(),db:transactionDatabase(),channels:[],downloads:[],requests:[],messages:[]};}
-async function tab(shared,embedded=false){
+async function tab(shared,embedded=false,fragment=''){
   const {$,document}=dom(),listeners=new Element('window');
   class Channel {
     constructor(name){this.name=name;shared.channels.push(this);}
     postMessage(data){for (const channel of shared.channels) if(channel!==this&&channel.name===this.name)setImmediate(()=>channel.onmessage?.({data}));}
   }
   class LocalURL extends URL {static createObjectURL(blob){shared.downloads.push(blob);return 'blob:fixture';} static revokeObjectURL(){}}
-  const realm={document,location:{origin:'https://test.invalid',href:'https://test.invalid/brain/memory/'},navigator:{},addEventListener:(...args)=>listeners.addEventListener(...args),Blob,URL:LocalURL,
+  const location=new URL('https://test.invalid/brain/memory/'+fragment);
+  const scrubbed=[];
+  const history={state:null,replaceState(state,_title,address){this.state=state;location.href=new URL(address,location).href;scrubbed.push(location.href);}};
+  const realm={document,location,history,navigator:{},addEventListener:(...args)=>listeners.addEventListener(...args),
+    dispatchEvent:event=>listeners.fire(event.type,event),Event,CustomEvent,Blob,URL:LocalURL,
     MutationObserver:class {constructor(fn){this.fn=fn;}observe(element){element.watch=this.fn;}disconnect(){}},
     localStorage:{getItem:key=>shared.local.get(key)??null,setItem:(key,value)=>shared.local.set(key,value)},
     indexedDB:shared.db, crypto:globalThis.crypto,TextEncoder,TextDecoder,atob,btoa,BroadcastChannel:Channel,
@@ -56,6 +61,8 @@ async function tab(shared,embedded=false){
   realm.window=realm;
   realm.parent=embedded?{postMessage:(msg,where)=>shared.messages.push([msg,where])}:realm;
   const ctx=vm.createContext(realm);
+  vm.runInContext(importLinkScript,ctx,{filename:'import-link.js'});
+  const initialHash=location.hash;
   const modules=new Map();
   const resolve=(name,from)=>modules.get(new URL(name,from.identifier).href);
   async function importModule(name,from){
@@ -75,14 +82,16 @@ async function tab(shared,embedded=false){
     const deadline=Date.now()+4500;
     while(!assertion()){if(Date.now()>deadline)throw Error('UI did not reach expected condition: '+$('status').textContent);await delay(10);}
   }
-  const t={$,until,context:ctx,window:realm,listeners,shared,click:id=>$(id).click(),submit:id=>$(id).fire('submit'),
+  const t={$,until,initialHash,scrubbed,
+    newHash(fragment){const oldURL=location.href;location.hash=fragment;listeners.fire('hashchange',{oldURL,newURL:location.href});},
+    context:ctx,window:realm,listeners,shared,click:id=>$(id).click(),submit:id=>$(id).fire('submit'),
     async unlock(pw=password){$('pw').value=pw;t.submit('unlockForm'); await until(()=>!$('desk').hidden);},
     async save(values){for(const [key,value] of Object.entries(values))$(key).value=value;t.submit('editor');await until(()=>$('editor').hidden);},
     select(name){const btn=$('list').children.flatMap(li=>li.children).find(btn=>btn.textContent===name);assert.ok(btn,'Missing '+name);btn.click();},
     search(q){$('search').value=q;$('search').fire('input');return $('list').textContent;},
     async restore(backup,pw,message){$('file').files=[new Blob([backup])];$('backupPw').value=pw;t.submit('restore');await until(()=>$('status').textContent.includes(message));}
   };
-  await until(()=>!$('gate').hidden);return t;
+  await until(()=>!$('gate').hidden||!$('linkPanel').hidden||$('status').classes.has('error'));return t;
 }
 test("production UI handlers capture, search, correct, lock, backup, restore and reconcile two tabs",async()=>{
   const context=origin(), a=await tab(context);
@@ -186,4 +195,77 @@ test("the stable memory route can pick an unlocked graph node and requires a del
   graphPanel.children[0].click();
   assert.ok(!doc.body.children.includes(overlay));assert.ok(!a.$('editor').hidden);assert.equal(a.$('title').value,'Paper orchard');assert.equal(a.$('count').textContent,'0 records');
   await a.save({});a.select('Paper orchard');assert.equal(a.$('recordSource').textContent,'Brain graph · fictional/id');assert.equal(a.$('recordBody').textContent,'Orchard fixture');
+});
+
+async function importFixture(){
+  const {encryptBackup}=await import('../memory/memory-core.mjs');
+  const entry={id:'fictional-link-id',versions:[{at:'2026-11-22T09:30:00.000Z',title:'Fictional linked entry',body:'Fictional private fragment text',source:'Notebook for fragment testing'}]};
+  const secret='Fictional-Link-Passphrase-981';
+  const envelope=await encryptBackup([entry],secret);
+  const fragment='#import=v1.'+Buffer.from(JSON.stringify(envelope)).toString('base64url');
+  return {entry,secret,envelope,fragment};
+}
+function submitLink(t,secret){t.$('linkPw').value=secret;t.submit('linkForm');}
+test('private link strips its fragment before application startup, rejects a wrong passphrase without writing and imports on a fresh device',async()=>{
+  const {entry,secret,fragment}=await importFixture(),state=origin(),a=await tab(state,false,fragment);
+  assert.equal(a.initialHash,'');
+  assert.deepEqual(a.scrubbed,['https://test.invalid/brain/memory/']);
+  assert.equal(a.context.takeBrainImport(),null);
+  assert.equal(state.db.snapshot(),'[]');assert.equal(state.local.size,0);
+  await a.until(()=>!a.$('linkPanel').hidden);
+  submitLink(a,'Wrong-Passphrase-Example');
+  await a.until(()=>a.$('status').classes.has('error'));
+  assert.equal(state.db.snapshot(),'[]');assert.equal(state.local.size,0);
+  submitLink(a,secret);await a.until(()=>a.$('list').textContent===entry.versions[0].title);
+  a.select(entry.versions[0].title);
+  assert.equal(a.$('recordBody').textContent,entry.versions[0].body);
+  assert.equal(a.$('recordSource').textContent,entry.versions[0].source);
+  assert.ok(a.$('linkPanel').hidden);assert.equal(a.$('linkPw').value,'');
+  assert.ok(!state.db.snapshot().includes(entry.versions[0].body));assert.ok(!state.db.snapshot().includes(secret));
+  assert.deepEqual(state.requests,[]);
+});
+test('existing locked memory requires its own unlock before merging a link and repeated links retain one copy',async()=>{
+  const {entry,secret,fragment}=await importFixture(),state=origin(),old=await tab(state);
+  await old.unlock();old.click('new');await old.save({title:'Existing private fixture',body:'Do not overwrite this separate record'});
+  old.click('lock');await old.until(()=>!old.$('gate').hidden);
+  const a=await tab(state,false,fragment),initialStore=state.db.snapshot();
+  submitLink(a,secret);await delay(350);
+  assert.ok(a.$('desk').hidden);assert.equal(state.db.snapshot(),initialStore);
+  await a.unlock(password);await a.until(()=>!a.$('linkPanel').hidden);
+  submitLink(a,secret);await a.until(()=>a.$('count').textContent==='2 records');
+  a.select('Existing private fixture');assert.equal(a.$('recordBody').textContent,'Do not overwrite this separate record');
+  a.select(entry.versions[0].title);assert.equal(a.$('recordBody').textContent,entry.versions[0].body);
+  a.newHash(fragment);await a.until(()=>!a.$('linkPanel').hidden);
+  assert.equal(a.window.location.hash,'');
+  submitLink(a,secret);await a.until(()=>a.$('linkPanel').hidden);
+  assert.equal(a.$('count').textContent,'2 records');assert.deepEqual(state.requests,[]);
+});
+test('malformed and dismissed import fragments cause no network requests or vault writes',async()=>{
+  const {fragment}=await importFixture(),state=origin(),a=await tab(state,false,'#import=v1.!');
+  assert.equal(a.initialHash,'');assert.ok(!a.$('linkPanel').hidden);assert.ok(a.$('linkForm').hidden);assert.match(a.$('linkMessage').textContent,/invalid/i);
+  assert.equal(state.db.snapshot(),'[]');assert.equal(state.local.size,0);
+  a.newHash(fragment);await a.until(()=>!a.$('linkPanel').hidden);a.click('linkDismiss');
+  assert.ok(a.$('linkPanel').hidden);assert.equal(a.context.takeBrainImport(),null);
+  assert.equal(a.window.location.hash,'');assert.equal(state.db.snapshot(),'[]');assert.deepEqual(state.requests,[]);
+});
+
+test('private import parser rejects extra plaintext metadata, URL-looking payloads and oversized fragments without fetching or persisting',async()=>{
+  const {envelope}=await importFixture(),state=origin();
+  const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+  const attempted=[
+    '#import=v1.'+encode({...envelope,privateNote:'Fictional forbidden plaintext metadata'}),
+    '#import=v1.https://example.invalid/private-fixture',
+    '#import=https://example.invalid/alternate',
+    '#import=v1.'+encode('https://example.invalid/alternative'),
+    '#import=v1.'+'A'.repeat(32768)
+  ];
+  for(const fragment of attempted){
+    const a=await tab(state,false,'?local=1'+fragment);
+    assert.equal(a.initialHash,'');assert.deepEqual(a.scrubbed,['https://test.invalid/brain/memory/?local=1']);
+    assert.equal(a.context.takeBrainImport(),null);
+    assert.match(a.$('linkMessage').textContent,/invalid/i);assert.ok(a.$('linkForm').hidden);
+    assert.ok(!a.$('linkMessage').textContent.includes('forbidden plaintext'));
+    submitLink(a,'Fictional-wrong-password');await delay(15);
+    assert.equal(state.db.snapshot(),'[]');assert.equal(state.local.size,0);assert.deepEqual(state.requests,[]);
+  }
 });

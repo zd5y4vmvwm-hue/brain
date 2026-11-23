@@ -54,12 +54,13 @@ test('both workers precache their own assets and leave other scopes and caches a
 });
 test('offline navigations resolve to distinct graph and memory shells, including supported query parameters',async()=>{
   const h=await host();h.network.set(graph,'original graph');h.network.set(graph+'index.html','original graph');
-  h.network.set(memory,'encrypted memory UI');h.network.set(memory+'index.html','encrypted memory UI');h.network.set(memory+'app.mjs','current memory code');
+  h.network.set(memory,'encrypted memory UI');h.network.set(memory+'index.html','encrypted memory UI');h.network.set(memory+'app.mjs','current memory code');h.network.set(memory+'import-link.js','local fragment reader');
   const a=await h.worker(graph,'sw.js'), b=await h.worker(memory,'memory/sw.js');
   await a.install();await b.install();h.setOffline(true);
   assert.equal(await (await a.request(graph+'?open=howto','GET','navigate')).text(),'original graph');
   assert.equal(await (await b.request(memory,'GET','navigate')).text(),'encrypted memory UI');
   assert.equal(await (await b.request(memory+'app.mjs')).text(),'current memory code');
+  assert.equal(await (await b.request(memory+'import-link.js')).text(),'local fragment reader');
 });
 test('next online load refreshes both the graph build and memory code for subsequent offline use',async()=>{
   const h=await host();const a=await h.worker(graph,'sw.js'), b=await h.worker(memory,'memory/sw.js');await b.install();await a.install();

@@ -13,3 +13,5 @@ button.primary { background:var(--mint); color:#06130d; font-weight:700; } butto
 
 #pickGraph {margin-top:10px;} .graph-picker {position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:#050706;padding-top:env(safe-area-inset-top);}
 .graph-picker>button {align-self:flex-start;margin:5px 12px;} .graph-picker>iframe {flex:1;width:100%;border:0;background:#000;}
+
+#linkPanel { margin:16px 0; padding:16px; border:1px solid var(--line); } #linkPanel h2 {margin:0;} #linkDismiss {margin-top:12px;}

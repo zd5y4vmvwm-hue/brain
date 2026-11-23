@@ -3,10 +3,14 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050706"><meta name="robots" content="noindex,nofollow">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self'; worker-src 'self'; frame-src 'self'">
+<script src="import-link.js"></script>
 <title>Memory · Brain</title><link rel="stylesheet" href="style.css">
 </head><body><header><a id="return" href="../">← Brain</a><button type="button" id="lock" hidden>Lock</button></header>
 <main><h1>Memory<span>.</span></h1><p class="intro">Private captures, sources and corrections on this device.</p>
 <p id="status" role="status" aria-live="polite">Opening memory…</p>
+<section id="linkPanel" hidden><h2>Linked memories</h2><p id="linkMessage"></p>
+<form id="linkForm"><label>Import passphrase<input id="linkPw" type="password" required autocomplete="off"></label><button class="primary" id="linkOpen" type="submit">Open linked memories</button></form>
+<button id="linkDismiss" type="button">Dismiss link</button></section>
 <section id="gate" hidden><form id="unlockForm"><label>Memory passphrase<input id="pw" type="password" required autocomplete="current-password"></label><p id="hint"></p><button class="primary" id="unlockBtn" type="submit">Unlock memory</button></form></section>
 <section id="desk" hidden>
 <div class="tools"><label>Search memory<input id="search" type="search" placeholder="Title, text or source" autocomplete="off"></label><button id="new" type="button">New memory</button></div>
