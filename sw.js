@@ -1,31 +1,7 @@
-// Brain nightly graph build c1014ef97a
-const CACHE = 'brain-v2-c1014ef97a-memory1';
-const BASE = self.registration.scope;
-const ASSETS = ['./','./index.html','./manifest.json','./icon-180.png','./icon-192.png','./icon-512.png','./memory/connect.js','./memory.html','./brain-vault.js'].map(path => new URL(path, BASE).href);
-const INDEX = new URL('./index.html', BASE).href;
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
-});
-self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('brain-v2-') && key !== CACHE)
-    .map(key => caches.delete(key)))).then(() => self.clients.claim()));
-});
-self.addEventListener('fetch', event => {
-  const req = event.request;
-  if (req.method !== 'GET' || !req.url.startsWith(BASE)) return;
-  const url = new URL(req.url);
-  url.search = ''; url.hash = '';
-  if (!ASSETS.includes(url.href)) return;
-  const graph = url.href === BASE || url.href === INDEX;
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    try {
-      const response = await fetch(req, {cache:graph ? 'no-cache' : 'default'});
-      if (response.ok) await cache.put(graph ? INDEX : url.href, response.clone()).catch(() => {});
-      else return (await cache.match(graph ? INDEX : url.href)) || response;
-      return response;
-    } catch {
-      return (await cache.match(graph ? INDEX : url.href)) || Response.error();
-    }
-  })());
-});
+// Brain service worker · build 77ae7669c5
+const C='brain-v2-77ae7669c5',ASSETS=['./','./index.html','./manifest.json','./icon-180.png','./icon-192.png','./icon-512.png'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()))});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',e=>{const r=e.request;if(r.method!=='GET'||new URL(r.url).origin!==location.origin)return;
+  if(r.mode==='navigate'||r.url.endsWith('/index.html')){e.respondWith(fetch(r).then(res=>{const cp=res.clone();caches.open(C).then(c=>c.put('./index.html',cp));return res}).catch(()=>caches.match('./index.html')));return}
+  e.respondWith(caches.match(r).then(m=>m||fetch(r).then(res=>{const cp=res.clone();caches.open(C).then(c=>c.put(r,cp));return res})))});
